@@ -52,6 +52,7 @@ typedef struct FParticle
 
 // globals
 FParticle particles[NUM_PARTICLES];
+AppContextRef app;
 Window window;
 Layer particle_layer;
 TextLayer text_header_layer;
@@ -302,14 +303,13 @@ void kickoff_display_time() {
   PblTm current_time;
   get_time(&current_time);
   display_time(&current_time);
-  // TODO put the disperse timer here
+  app_timer_send_event(app, 12000 /* milliseconds */, COOKIE_DISPERSE_TIMER);
 }
 
 void handle_tick(AppContextRef ctx, PebbleTickEvent *t) {
   (void)t;
   (void)ctx;
   kickoff_display_time();
-  app_timer_send_event(ctx, 12000 /* milliseconds */, COOKIE_DISPERSE_TIMER);
 }
 
 void init_particles() {
@@ -343,6 +343,7 @@ void click_config_provider(ClickConfig **config, Window *window) {
 
 void handle_init(AppContextRef ctx) {
   (void)ctx;
+  app = ctx;
 
   uint32_t seed = 4;
   tinymt32_init(&rndstate, seed);
