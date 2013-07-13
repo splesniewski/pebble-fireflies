@@ -13,7 +13,7 @@ PBL_APP_INFO(MY_UUID,
              "Fireflies", "Little Hiccup",
              1, 0, /* App version */
              RESOURCE_ID_IMAGE_MENU_ICON,
-             APP_INFO_WATCH_FACE);
+             APP_INFO_STANDARD_APP);
 
 #define maximum(a,b) a > b ? a : b
 #define minimum(a,b) ((a) < (b) ? (a) : (b))
@@ -348,6 +348,7 @@ void handle_init(AppContextRef ctx) {
   tinymt32_init(&rndstate, seed);
 
   window_init(&window, "Fireflies");
+  window_set_fullscreen(&window, true);
   window_stack_push(&window, true /* Animated */);
   window_set_background_color(&window, GColorBlack);
   window_set_click_config_provider(&window, (ClickConfigProvider) click_config_provider);
