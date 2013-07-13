@@ -328,7 +328,7 @@ void init_particles() {
   }
 }
 
-void back_single_click_handler(ClickRecognizerRef recognizer, Window *window) {
+void single_click_handler(ClickRecognizerRef recognizer, Window *window) {
   (void)recognizer;
   (void)window;
   kickoff_display_time();
@@ -337,7 +337,10 @@ void back_single_click_handler(ClickRecognizerRef recognizer, Window *window) {
 
 void click_config_provider(ClickConfig **config, Window *window) {
   (void)window;
-  config[BUTTON_ID_BACK]->click.handler = (ClickHandler) back_single_click_handler;
+  config[BUTTON_ID_BACK]->click.handler = (ClickHandler) single_click_handler;
+  config[BUTTON_ID_UP]->click.handler = (ClickHandler) single_click_handler;
+  config[BUTTON_ID_SELECT]->click.handler = (ClickHandler) single_click_handler;
+  config[BUTTON_ID_DOWN]->click.handler = (ClickHandler) single_click_handler;
 }
 
 
