@@ -321,6 +321,10 @@ void handle_tick(struct tm *now, TimeUnits units_changed) {
   kickoff_display_time();
 }
 
+void handle_tap(AccelAxisType axis, int32_t direction) {
+  kickoff_display_time();
+}
+
 void init_particles() {
   GRect window_bounds = layer_get_bounds(window_get_root_layer(window));
   for(int i=0; i<NUM_PARTICLES; i++) {
@@ -372,6 +376,7 @@ void handle_init() {
   app_timer_register(random_in_range(5000, 15000), handle_swarm_timer, NULL);
 
   tick_timer_service_subscribe(MINUTE_UNIT, handle_tick);
+  accel_tap_service_subscribe(handle_tap);
 }
 
 void handle_deinit() {
