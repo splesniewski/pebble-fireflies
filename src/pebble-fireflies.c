@@ -1,19 +1,9 @@
 #include <stdio.h>
 #include <math.h>
-#include "pebble_os.h"
-#include "pebble_app.h"
-#include "pebble_fonts.h"
+#include <pebble.h>
 #include "xprintf.h"
 #include "tinymt32.h"
 #include "numbers.h"
-
-// defines
-#define MY_UUID { 0x24, 0xfc, 0xf7, 0xe1, 0xbd, 0xcd, 0x4c, 0x34, 0x80, 0x04, 0x62, 0x37, 0xf5, 0x08, 0x74, 0x61 }
-PBL_APP_INFO(MY_UUID,
-             "Fireflies", "Little Hiccup",
-             1, 0, /* App version */
-             RESOURCE_ID_IMAGE_MENU_ICON,
-             APP_INFO_STANDARD_APP);
 
 #define maximum(a,b) a > b ? a : b
 #define minimum(a,b) ((a) < (b) ? (a) : (b))
@@ -52,11 +42,11 @@ typedef struct FParticle
 
 // globals
 FParticle particles[NUM_PARTICLES];
-AppContextRef app;
-Window window;
-Layer particle_layer;
-TextLayer text_header_layer;
-AppTimerHandle timer_handle;
+// TODO: Figure out what replaces AppContextRef in 2.0.
+// AppContextRef app;
+Window *window;
+Layer *particle_layer;
+TextLayer *text_header_layer;
 tinymt32_t rndstate;
 int showing_time = 0;
 
@@ -76,13 +66,15 @@ float random_in_rangef(float min, float max) {
 }
 
 GPoint random_point_in_screen() {
-  return GPoint(random_in_range(0, window.layer.frame.size.w+1), 
-                random_in_range(0, window.layer.frame.size.h+1));
+  GRect window_bounds = layer_get_bounds(window_get_root_layer(window));
+  return GPoint(random_in_range(0, window_bounds.size.w+1),
+		random_in_range(0, window_bounds.size.h+1));
 }
 
 GPoint random_point_roughly_in_screen(int margin, int padding) {
-  return GPoint(random_in_range(0-margin+padding, window.layer.frame.size.w+1+margin-padding), 
-                random_in_range(0-margin+padding, window.layer.frame.size.h+1+margin-padding));
+  GRect window_bounds = layer_get_bounds(window_get_root_layer(window));
+  return GPoint(random_in_range(0-margin+padding, window_bounds.size.w+1+margin-padding),
+		random_in_range(0-margin+padding, window_bounds.size.h+1+margin-padding));
 }
 
 void update_particle(int i) {
@@ -166,23 +158,41 @@ void disperse_particles() {
   swarm_to_a_different_location();
 }
 
-void handle_timer(AppContextRef ctx, AppTimerHandle handle, uint32_t cookie) {
-  (void)ctx;
-  (void)handle;
-
-  if (cookie == COOKIE_ANIMATION_TIMER) {
-     layer_mark_dirty(&particle_layer);
-     timer_handle = app_timer_send_event(ctx, 50 /* milliseconds */, COOKIE_ANIMATION_TIMER);
-  } else if (cookie == COOKIE_SWARM_TIMER) {
-    if(showing_time == 0) {
-      swarm_to_a_different_location();
-    }
-    app_timer_send_event(ctx, random_in_range(5000,15000) /* milliseconds */, COOKIE_SWARM_TIMER);
-  } else if (cookie == COOKIE_DISPERSE_TIMER) {
-    showing_time = 0;
-    disperse_particles();
-  }
+void handle_animation_timer() {
+  layer_mark_dirty(particle_layer);
+  app_timer_register(50, handle_animation_timer, NULL);
 }
+
+void handle_swarm_timer() {
+  if (showing_time == 0) {
+    swarm_to_a_different_location();
+  }
+  app_timer_register(random_in_range(5000, 15000), handle_swarm_timer, NULL);
+}
+
+void handle_disperse_timer() {
+  showing_time = 0;
+  disperse_particles();
+}
+
+// Hopefully this is all replaced by the handle_*_timer functions above.
+/* void handle_timer(AppContextRef ctx, AppTimerHandle handle, uint32_t cookie) { */
+/*   (void)ctx; */
+/*   (void)handle; */
+
+/*   if (cookie == COOKIE_ANIMATION_TIMER) { */
+/*      layer_mark_dirty(&particle_layer); */
+/*      timer_handle = app_timer_send_event(ctx, 50 /\* milliseconds *\/, COOKIE_ANIMATION_TIMER); */
+/*   } else if (cookie == COOKIE_SWARM_TIMER) { */
+/*     if(showing_time == 0) { */
+/*       swarm_to_a_different_location(); */
+/*     } */
+/*     app_timer_send_event(ctx, random_in_range(5000,15000) /\* milliseconds *\/, COOKIE_SWARM_TIMER); */
+/*   } else if (cookie == COOKIE_DISPERSE_TIMER) { */
+/*     showing_time = 0; */
+/*     disperse_particles(); */
+/*   } */
+/* } */
 
 void layer_update_callback(Layer *me, GContext* ctx) {
   (void)me;
@@ -244,7 +254,7 @@ unsigned short get_display_hour(unsigned short hour) {
   return display_hour ? display_hour : 12; // Converts "0" to "12"
 }
 
-void display_time(PblTm *tick_time) {
+void display_time(struct tm *tick_time) {
   showing_time = 1;
   unsigned short hour = get_display_hour(tick_time->tm_hour);
   int min = tick_time->tm_min;
@@ -255,8 +265,9 @@ void display_time(PblTm *tick_time) {
   int hr_digit_ones = hour % 10; 
   int min_digit_tens = min / 10; 
   int min_digit_ones = min % 10; 
-  int w = window.layer.frame.size.w;
-  int h = window.layer.frame.size.h;
+  // GRect window_bounds = layer_get_bounds(window_get_root_layer(window));
+  // int w = window_bounds.size.w;
+  // int h = window_bounds.size.h;
 
   // take out 5 particles
   // 2 for colon
@@ -300,23 +311,22 @@ void display_time(PblTm *tick_time) {
 }
 
 void kickoff_display_time() {
-  PblTm current_time;
-  get_time(&current_time);
-  display_time(&current_time);
-  app_timer_send_event(app, 12000 /* milliseconds */, COOKIE_DISPERSE_TIMER);
+  time_t t = time(NULL);
+  struct tm *current_time = localtime(&t);
+  display_time(current_time);
+  app_timer_register(12000, handle_disperse_timer, NULL);
 }
 
-void handle_tick(AppContextRef ctx, PebbleTickEvent *t) {
-  (void)t;
-  (void)ctx;
+void handle_tick(struct tm *now, TimeUnits units_changed) {
   kickoff_display_time();
 }
 
 void init_particles() {
+  GRect window_bounds = layer_get_bounds(window_get_root_layer(window));
   for(int i=0; i<NUM_PARTICLES; i++) {
 
     GPoint start = random_point_roughly_in_screen(10, 0);
-    GPoint goal = GPoint(window.layer.frame.size.w/2, window.layer.frame.size.h/2);
+    GPoint goal = GPoint(window_bounds.size.w/2, window_bounds.size.h/2);
 
     // GPoint start = goal;
     float initial_power = NORMAL_POWER;
@@ -328,34 +338,14 @@ void init_particles() {
   }
 }
 
-void single_click_handler(ClickRecognizerRef recognizer, Window *window) {
-  (void)recognizer;
-  (void)window;
-  kickoff_display_time();
-}
-
-
-void click_config_provider(ClickConfig **config, Window *window) {
-  (void)window;
-  config[BUTTON_ID_BACK]->click.handler = (ClickHandler) single_click_handler;
-  config[BUTTON_ID_UP]->click.handler = (ClickHandler) single_click_handler;
-  config[BUTTON_ID_SELECT]->click.handler = (ClickHandler) single_click_handler;
-  config[BUTTON_ID_DOWN]->click.handler = (ClickHandler) single_click_handler;
-}
-
-
-void handle_init(AppContextRef ctx) {
-  (void)ctx;
-  app = ctx;
-
+void handle_init() {
   uint32_t seed = 4;
   tinymt32_init(&rndstate, seed);
 
-  window_init(&window, "Fireflies");
-  window_set_fullscreen(&window, true);
-  window_stack_push(&window, true /* Animated */);
-  window_set_background_color(&window, GColorBlack);
-  window_set_click_config_provider(&window, (ClickConfigProvider) click_config_provider);
+  window = window_create();
+  window_set_fullscreen(window, true);
+  window_stack_push(window, true /* Animated */);
+  window_set_background_color(window, GColorBlack);
 
   // resource_init_current_app(&APP_RESOURCES);
 
@@ -367,38 +357,33 @@ void handle_init(AppContextRef ctx) {
   init_particles();
 
   // setup debugging text layer
-  text_layer_init(&text_header_layer, window.layer.frame);
-  text_layer_set_text_color(&text_header_layer, GColorWhite);
-  text_layer_set_background_color(&text_header_layer, GColorClear);
-  layer_set_frame(&text_header_layer.layer, GRect(0, 0, 144-0, 168-0));
-  text_layer_set_font(&text_header_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
-  layer_add_child(&window.layer, &text_header_layer.layer);
+  GRect window_bounds = layer_get_bounds(window_get_root_layer(window));
+  text_header_layer = text_layer_create(window_bounds);
+  text_layer_set_text_color(text_header_layer, GColorWhite);
+  text_layer_set_background_color(text_header_layer, GColorClear);
+  text_layer_set_font(text_header_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+  layer_add_child(window_get_root_layer(window), text_layer_get_layer(text_header_layer));
  
-  layer_init(&particle_layer, GRect(0,0, window.layer.frame.size.w, window.layer.frame.size.h));
-  particle_layer.update_proc = update_particles_layer;
-  layer_add_child(&window.layer, &particle_layer);
+  particle_layer = layer_create(window_bounds);
+  layer_set_update_proc(particle_layer, update_particles_layer);
+  layer_add_child(window_get_root_layer(window), particle_layer);
 
-  timer_handle = app_timer_send_event(ctx, 50 /* milliseconds */, COOKIE_ANIMATION_TIMER);
-  app_timer_send_event(ctx, random_in_range(5000,15000) /* milliseconds */, COOKIE_SWARM_TIMER);
+  app_timer_register(50, handle_animation_timer, NULL);
+  app_timer_register(random_in_range(5000, 15000), handle_swarm_timer, NULL);
+
+  tick_timer_service_subscribe(MINUTE_UNIT, handle_tick);
 }
 
-void handle_deinit(AppContextRef ctx) {
-	(void)ctx;
+void handle_deinit() {
+  layer_destroy(particle_layer);
+  text_layer_destroy(text_header_layer);
+  window_destroy(window);
 }
 
-void pbl_main(void *params) {
-  PebbleAppHandlers handlers = {
-    .init_handler = &handle_init,
-    .timer_handler = &handle_timer,
-
-    // Handle time updates
-    .tick_info = {
-      .tick_handler = &handle_tick,
-      .tick_units = MINUTE_UNIT
-    }
-
-  };
-  app_event_loop(params, &handlers);
+int main() {
+  handle_init();
+  app_event_loop();
+  handle_deinit();
 }
 
 
