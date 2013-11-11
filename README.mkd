@@ -19,18 +19,15 @@ return to their natural state.
 
 ## Build Instructions
 
+This fork relies on the beta 2.0 SDK.
+
 Clone this repository in an appropriate directory:
 
-	git clone https://github.com/jashmenn/pebble-fireflies.git
-
-Set up waf:
-
-	python ~/pebble-dev/pebble-sdk-release-001/tools/create_pebble_project.py --symlink-only ~/pebble-dev/pebble-sdk-release-001/sdk/ pebble-fireflies
-	cd pebble-fireflies
+	git clone https://github.com/phardy/pebble-fireflies.git
 
 Configure and build:
 
-  make compile
+  	pebble build
 
 Install `pebble-fireflies.pbw` in build directory. 
 
