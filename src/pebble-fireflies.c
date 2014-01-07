@@ -10,10 +10,11 @@
 #define COOKIE_ANIMATION_TIMER 1
 #define COOKIE_SWARM_TIMER 2
 #define COOKIE_DISPERSE_TIMER 3
+#define GOAL_DISTANCE 16
 #define NORMAL_POWER 400.0F
 #define TIGHT_POWER 1.0F
 #define MAX_SPEED 1.0F
-#define SWARM_SPEED 3.0F
+#define SWARM_SPEED 2.0F
 #define SCREEN_MARGIN 0.0F
 #define JITTER 0.5F
 #define MAX_SIZE 3.0F
@@ -87,6 +88,16 @@ void update_particle(int i) {
   // gravitate towards goal
   particles[i].dx += -(particles[i].position.x - particles[i].grav_center.x)/particles[i].power;
   particles[i].dy += -(particles[i].position.y - particles[i].grav_center.y)/particles[i].power;
+
+  // stop swarming if goal reached
+  if (particles[i].swarming) {
+    float dx, dy;
+    dx = particles[i].position.x - particles[i].grav_center.x;
+    dy = particles[i].position.y - particles[i].grav_center.y;
+    if (((dx*dx)+(dy*dy)) < GOAL_DISTANCE) {
+      particles[i].swarming = false;
+    }
+  }
 
   // damping
   particles[i].dx *= 0.999F;
