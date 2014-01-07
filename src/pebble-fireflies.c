@@ -13,6 +13,7 @@
 #define NORMAL_POWER 400.0F
 #define TIGHT_POWER 1.0F
 #define MAX_SPEED 1.0F
+#define SWARM_SPEED 3.0F
 #define SCREEN_MARGIN 0.0F
 #define JITTER 0.5F
 #define MAX_SIZE 3.0F
@@ -35,8 +36,9 @@ typedef struct FParticle
   float size;
   float goal_size;
   float ds;
+  bool swarming;
 } FParticle;
-#define FParticle(px, py, gx, gy, power) ((FParticle){{(px), (py)}, {(gx), (gy)}, 0.0F, 0.0F, power, 0.0F, 0.0F, 0.0F})
+#define FParticle(px, py, gx, gy, power) ((FParticle){{(px), (py)}, {(gx), (gy)}, 0.0F, 0.0F, power, 0.0F, 0.0F, 0.0F, false})
 #define FPoint(x, y) ((FPoint){(x), (y)})
 
 // globals
@@ -77,7 +79,6 @@ GPoint random_point_roughly_in_screen(int margin, int padding) {
 }
 
 void update_particle(int i) {
-  // 
   if(tinymt32_generate_float01(&rndstate) < 0.4F) {
     particles[i].dx += random_in_rangef(-JITTER, JITTER);
     particles[i].dy += random_in_rangef(-JITTER, JITTER);
@@ -92,10 +93,15 @@ void update_particle(int i) {
   particles[i].dy *= 0.999F;
 
   // snap to max
-  if(particles[i].dx >  MAX_SPEED) particles[i].dx =  MAX_SPEED;
-  if(particles[i].dx < -MAX_SPEED) particles[i].dx = -MAX_SPEED;
-  if(particles[i].dy >  MAX_SPEED) particles[i].dy =  MAX_SPEED;
-  if(particles[i].dy < -MAX_SPEED) particles[i].dy = -MAX_SPEED;
+  float speed;
+  if (particles[i].swarming)
+    speed = SWARM_SPEED;
+  else
+    speed = MAX_SPEED;
+  if(particles[i].dx >  speed) particles[i].dx =  speed;
+  if(particles[i].dx < -speed) particles[i].dx = -speed;
+  if(particles[i].dy >  speed) particles[i].dy =  speed;
+  if(particles[i].dy < -speed) particles[i].dy = -speed;
 
   particles[i].position.x += particles[i].dx;
   particles[i].position.y += particles[i].dy;
@@ -147,6 +153,7 @@ void disperse_particles() {
   for(int i=0;i<NUM_PARTICLES;i++) {
     particles[i].power = NORMAL_POWER;
     particles[i].goal_size = 0.0F;
+    particles[i].swarming = false;
   }
   swarm_to_a_different_location();
 }
@@ -237,6 +244,7 @@ void swarm_to_digit(int digit, int start_idx, int end_idx, int offset_x, int off
     particles[i].grav_center = FPoint(goal.x, goal.y);
     particles[i].power = TIGHT_POWER;
     particles[i].goal_size = random_in_rangef(2.0F, 3.5F);
+    particles[i].swarming = true;
   }
 
 }
