@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <math.h>
 #include <pebble.h>
-#include "xprintf.h"
 #include "tinymt32.h"
 #include "numbers.h"
 
@@ -129,12 +128,6 @@ void draw_particle(GContext* ctx, int i) {
 
 void update_particles_layer(Layer *me, GContext* ctx) {
   (void)me;
-  // update debug text layer
-  // static char test_text[100];
-  // unsigned int foo = tinymt32_generate_uint32(&rndstate);
-  // xsprintf( test_text, "rand: %u", random_in_range(0,10));
-  // text_layer_set_text(&text_header_layer, test_text);
-
   graphics_context_set_fill_color(ctx, GColorWhite);
   for(int i=0;i<NUM_PARTICLES;i++) {
     update_particle(i);
