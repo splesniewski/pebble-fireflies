@@ -1,23 +1,22 @@
 #include <stdio.h>
 #include <math.h>
-#include "pebble.h"
+#include <pebble.h>
 #include "tinymt32.h"
 #include "numbers.h"
 
-// defines
 #define maximum(a,b) a > b ? a : b
 #define minimum(a,b) ((a) < (b) ? (a) : (b))
 #define NUM_PARTICLES 140
-#define COOKIE_ANIMATION_TIMER 1
-#define COOKIE_SWARM_TIMER 2
-#define COOKIE_DISPERSE_TIMER 3
+#define GOAL_DISTANCE 16
 #define NORMAL_POWER 400.0F
 #define TIGHT_POWER 1.0F
 #define MAX_SPEED 1.0F
+#define SWARM_SPEED 2.0F
 #define SCREEN_MARGIN 0.0F
 #define JITTER 0.5F
 #define MAX_SIZE 3.0F
 #define MIN_SIZE 0.0F
+
 //#define DEBUG
 
 typedef struct FPoint
@@ -37,16 +36,13 @@ typedef struct FParticle
   float size;
   float goal_size;
   float ds;
+  bool swarming;
 } FParticle;
-#define FParticle(px, py, gx, gy, power) ((FParticle){{(px), (py)}, {(gx), (gy)}, 0.0F, 0.0F, power, 0.0F, 0.0F, 0.0F})
+#define FParticle(px, py, gx, gy, power) ((FParticle){{(px), (py)}, {(gx), (gy)}, 0.0F, 0.0F, power, 0.0F, 0.0F, 0.0F, false})
 #define FPoint(x, y) ((FPoint){(x), (y)})
 
 // globals
 FParticle particles[NUM_PARTICLES];
-
-uint32_t cookie_animation_timer=COOKIE_ANIMATION_TIMER;
-uint32_t cookie_swarm_timer=COOKIE_SWARM_TIMER;
-uint32_t cookie_disperse_timer=COOKIE_DISPERSE_TIMER;
 
 AppTimer *timer_handle;
 Window *window;
@@ -75,17 +71,18 @@ float random_in_rangef(float min, float max) {
 }
 
 GPoint random_point_in_screen() {
-  return GPoint(random_in_range(0, layer_get_frame(window_layer).size.w+1), 
-                random_in_range(0, layer_get_frame(window_layer).size.h+1));
+  GRect window_bounds = layer_get_bounds(window_layer);
+  return GPoint(random_in_range(0, window_bounds.size.w+1),
+		random_in_range(0, window_bounds.size.h+1));
 }
 
 GPoint random_point_roughly_in_screen(int margin, int padding) {
-  return GPoint(random_in_range(0-margin+padding, layer_get_frame(window_layer).size.w+1+margin-padding), 
-                random_in_range(0-margin+padding, layer_get_frame(window_layer).size.h+1+margin-padding));
+  GRect window_bounds = layer_get_bounds(window_layer);
+  return GPoint(random_in_range(0-margin+padding, window_bounds.size.w+1+margin-padding),
+		random_in_range(0-margin+padding, window_bounds.size.h+1+margin-padding));
 }
 
 void update_particle(int i) {
-  // 
   if(tinymt32_generate_float01(&rndstate) < 0.4F) {
     particles[i].dx += random_in_rangef(-JITTER, JITTER);
     particles[i].dy += random_in_rangef(-JITTER, JITTER);
@@ -95,15 +92,30 @@ void update_particle(int i) {
   particles[i].dx += -(particles[i].position.x - particles[i].grav_center.x)/particles[i].power;
   particles[i].dy += -(particles[i].position.y - particles[i].grav_center.y)/particles[i].power;
 
+  // stop swarming if goal reached
+  if (particles[i].swarming) {
+    float dx, dy;
+    dx = particles[i].position.x - particles[i].grav_center.x;
+    dy = particles[i].position.y - particles[i].grav_center.y;
+    if (((dx*dx)+(dy*dy)) < GOAL_DISTANCE) {
+      particles[i].swarming = false;
+    }
+  }
+
   // damping
   particles[i].dx *= 0.999F;
   particles[i].dy *= 0.999F;
 
   // snap to max
-  if(particles[i].dx >  MAX_SPEED) particles[i].dx =  MAX_SPEED;
-  if(particles[i].dx < -MAX_SPEED) particles[i].dx = -MAX_SPEED;
-  if(particles[i].dy >  MAX_SPEED) particles[i].dy =  MAX_SPEED;
-  if(particles[i].dy < -MAX_SPEED) particles[i].dy = -MAX_SPEED;
+  float speed;
+  if (particles[i].swarming)
+    speed = SWARM_SPEED;
+  else
+    speed = MAX_SPEED;
+  if(particles[i].dx >  speed) particles[i].dx =  speed;
+  if(particles[i].dx < -speed) particles[i].dx = -speed;
+  if(particles[i].dy >  speed) particles[i].dy =  speed;
+  if(particles[i].dy < -speed) particles[i].dy = -speed;
 
   particles[i].position.x += particles[i].dx;
   particles[i].position.y += particles[i].dy;
@@ -162,23 +174,26 @@ void disperse_particles() {
   for(int i=0;i<NUM_PARTICLES;i++) {
     particles[i].power = NORMAL_POWER;
     particles[i].goal_size = 0.0F;
+    particles[i].swarming = false;
   }
   swarm_to_a_different_location();
 }
 
-void handle_timer(uint32_t *cookie) {
-  if (*cookie == COOKIE_ANIMATION_TIMER) {
-     layer_mark_dirty(particle_layer);
-     timer_handle = app_timer_register(50 /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_animation_timer);
-  } else if (*cookie == COOKIE_SWARM_TIMER) {
-    if(showing_time == 0) {
-      swarm_to_a_different_location();
-    }
-    app_timer_register(random_in_range(5000,15000) /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_swarm_timer);
-  } else if (*cookie == COOKIE_DISPERSE_TIMER) {
-    showing_time = 0;
-    disperse_particles();
+void handle_animation_timer() {
+  layer_mark_dirty(particle_layer);
+  app_timer_register(50, handle_animation_timer, NULL);
+}
+
+void handle_swarm_timer() {
+  if (showing_time == 0) {
+    swarm_to_a_different_location();
   }
+  app_timer_register(random_in_range(5000, 15000), handle_swarm_timer, NULL);
+}
+
+void handle_disperse_timer() {
+  showing_time = 0;
+  disperse_particles();
 }
 
 void layer_update_callback(Layer *me, GContext* ctx) {
@@ -229,6 +244,7 @@ void swarm_to_digit(int digit, int start_idx, int end_idx, int offset_x, int off
     particles[i].grav_center = FPoint(goal.x, goal.y);
     particles[i].power = TIGHT_POWER;
     particles[i].goal_size = random_in_rangef(2.0F, 3.5F);
+    particles[i].swarming = true;
   }
 
 }
@@ -250,8 +266,9 @@ void display_time(struct tm *tick_time) {
   int hr_digit_ones = hour % 10; 
   int min_digit_tens = min / 10; 
   int min_digit_ones = min % 10; 
-  //  int w = layer_get_frame(window_layer).size.w;
-  //  int h = layer_get_frame(window_layer).size.h;
+  // GRect window_bounds = layer_get_bounds(window_layer);
+  // int w = window_bounds.size.w;
+  // int h = window_bounds.size.h;
 
   // take out 5 particles
   // 2 for colon
@@ -291,27 +308,29 @@ void display_time(struct tm *tick_time) {
     particles[NUM_PARTICLES-1].power = TIGHT_POWER;
     particles[NUM_PARTICLES-1].goal_size = 3.0F;
   }
-
 }
 
 void kickoff_display_time() {
-  time_t now=time(NULL);
-  struct tm *current_time = localtime(&now);
-
+  time_t t = time(NULL);
+  struct tm *current_time = localtime(&t);
   display_time(current_time);
-  // TODO put the disperse timer here
+  app_timer_register(12000, handle_disperse_timer, NULL);
 }
 
-void handle_tick(struct tm *tick_time, TimeUnits unit_changed) {
+void handle_tick(struct tm *now, TimeUnits units_changed) {
   kickoff_display_time();
-  app_timer_register(12000 /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_disperse_timer);
+}
+
+void handle_tap(AccelAxisType axis, int32_t direction) {
+  kickoff_display_time();
 }
 
 void init_particles() {
+  GRect window_bounds = layer_get_bounds(window_layer);
   for(int i=0; i<NUM_PARTICLES; i++) {
 
     GPoint start = random_point_roughly_in_screen(10, 0);
-    GPoint goal = GPoint(layer_get_frame(window_layer).size.w/2, layer_get_frame(window_layer).size.h/2);
+    GPoint goal = GPoint(window_bounds.size.w/2, window_bounds.size.h/2);
 
     // GPoint start = goal;
     float initial_power = NORMAL_POWER;
@@ -327,37 +346,38 @@ void handle_init() {
   uint32_t seed = 4;
   tinymt32_init(&rndstate, seed);
 
-  window=window_create();
+  window = window_create();
   window_layer=window_get_root_layer(window);
+  window_set_fullscreen(window, true);
+  window_stack_push(window, true /* Animated */);
   window_set_background_color(window, GColorBlack);
 
   init_particles();
 
+  GRect window_bounds = layer_get_bounds(window_layer);
+
 #ifdef DEBUG
   // setup debugging text layer
-  text_header_layer=text_layer_create(layer_get_frame(window_layer));
+  text_header_layer=text_layer_create(window_bounds);
   text_layer_set_text_color(text_header_layer, GColorWhite);
   text_layer_set_background_color(text_header_layer, GColorClear);
-  layer_set_frame(text_layer_get_layer(text_header_layer), GRect(0, 0, 144-0, 168-0));
   text_layer_set_font(text_header_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
   layer_add_child(window_layer, text_layer_get_layer(text_header_layer));
 #endif
-
-  particle_layer=layer_create(GRect(0,0, layer_get_frame(window_layer).size.w, layer_get_frame(window_layer).size.h));
+ 
+  particle_layer=layer_create(window_bounds);
   layer_set_update_proc(particle_layer, update_particles_layer);
   layer_add_child(window_layer, particle_layer);
 
-  timer_handle = app_timer_register(50 /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_animation_timer);
-  app_timer_register(random_in_range(5000,15000) /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_swarm_timer);
+  app_timer_register(50, handle_animation_timer, NULL);
+  app_timer_register(random_in_range(5000, 15000), handle_swarm_timer, NULL);
 
-  //
-  window_stack_push(window, true /* Animated */);
-
-  //
   tick_timer_service_subscribe(MINUTE_UNIT, handle_tick);
+  accel_tap_service_subscribe(handle_tap);
 }
 
 void handle_deinit() {
+  accel_tap_service_unsubscribe();
   tick_timer_service_unsubscribe();
 
 #ifdef DEBUG
@@ -365,7 +385,6 @@ void handle_deinit() {
 #endif
 
   layer_destroy(particle_layer);
-
   window_destroy(window);
 }
 

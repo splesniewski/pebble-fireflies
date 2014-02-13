@@ -1,10 +1,10 @@
 {
-  "uuid": "7419f25c-821b-4bd8-93d5-987e3115a8b6",
+  "uuid": "24fcf7e1-bdcd-4c34-8004-6237f5087461",
   "shortName": "Fireflies",
   "longName": "Fireflies",
   "companyName": "Little Hiccup",
-  "versionCode": 1,
-  "versionLabel": "2.0.0",
+  "versionCode": 3,
+  "versionLabel": "2.1.0",
   "watchapp": {
     "watchface": true
   },
@@ -15,7 +15,7 @@
         "menuIcon": true,
         "type": "png",
         "name": "IMAGE_MENU_ICON",
-        "file": "images/menu_icon_fireflies.png"
+        "file": "images/appicon.png"
       }
     ]
   }
