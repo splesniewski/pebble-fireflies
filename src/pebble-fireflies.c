@@ -196,6 +196,25 @@ void handle_disperse_timer() {
   disperse_particles();
 }
 
+// Hopefully this is all replaced by the handle_*_timer functions above.
+/* void handle_timer(AppContextRef ctx, AppTimerHandle handle, uint32_t cookie) { */
+/*   (void)ctx; */
+/*   (void)handle; */
+
+/*   if (cookie == COOKIE_ANIMATION_TIMER) { */
+/*      layer_mark_dirty(&particle_layer); */
+/*      timer_handle = app_timer_send_event(ctx, 50 /\* milliseconds *\/, COOKIE_ANIMATION_TIMER); */
+/*   } else if (cookie == COOKIE_SWARM_TIMER) { */
+/*     if(showing_time == 0) { */
+/*       swarm_to_a_different_location(); */
+/*     } */
+/*     app_timer_send_event(ctx, random_in_range(5000,15000) /\* milliseconds *\/, COOKIE_SWARM_TIMER); */
+/*   } else if (cookie == COOKIE_DISPERSE_TIMER) { */
+/*     showing_time = 0; */
+/*     disperse_particles(); */
+/*   } */
+/* } */
+
 void layer_update_callback(Layer *me, GContext* ctx) {
 }
 
