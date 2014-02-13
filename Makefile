@@ -1,16 +1,16 @@
 PBW = build/pebble-fireflies.pbw
 
 configure:
-	./waf configure
+	pebble configure
 
-compile: configure
-	./waf build
+compile:
+	pebble build
 
 install: compile
-	${LIBPEBBLE_HOME}/p.py --lightblue load $(PBW)
+	pebble install
 
 reinstall: compile
-	${LIBPEBBLE_HOME}/p.py --lightblue reinstall $(PBW)
+	pebble install
 
 numbers:
 	rm src/numbers.h

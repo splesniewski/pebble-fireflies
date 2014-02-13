@@ -1,20 +1,10 @@
 #include <stdio.h>
 #include <math.h>
-#include "pebble_os.h"
-#include "pebble_app.h"
-#include "pebble_fonts.h"
-#include "xprintf.h"
+#include "pebble.h"
 #include "tinymt32.h"
 #include "numbers.h"
 
 // defines
-#define MY_UUID { 0x74, 0x19, 0xF2, 0x5C, 0x82, 0x1B, 0x4B, 0xD8, 0x93, 0xD5, 0x98, 0x7E, 0x31, 0x15, 0xA8, 0xB6 }
-PBL_APP_INFO(MY_UUID,
-             "Fireflies", "Little Hiccup",
-             1, 0, /* App version */
-             RESOURCE_ID_IMAGE_MENU_ICON,
-             APP_INFO_WATCH_FACE);
-
 #define maximum(a,b) a > b ? a : b
 #define minimum(a,b) ((a) < (b) ? (a) : (b))
 #define NUM_PARTICLES 140
@@ -28,6 +18,7 @@ PBL_APP_INFO(MY_UUID,
 #define JITTER 0.5F
 #define MAX_SIZE 3.0F
 #define MIN_SIZE 0.0F
+//#define DEBUG
 
 typedef struct FPoint
 {
@@ -52,10 +43,19 @@ typedef struct FParticle
 
 // globals
 FParticle particles[NUM_PARTICLES];
-Window window;
-Layer particle_layer;
-TextLayer text_header_layer;
-AppTimerHandle timer_handle;
+
+uint32_t cookie_animation_timer=COOKIE_ANIMATION_TIMER;
+uint32_t cookie_swarm_timer=COOKIE_SWARM_TIMER;
+uint32_t cookie_disperse_timer=COOKIE_DISPERSE_TIMER;
+
+AppTimer *timer_handle;
+Window *window;
+Layer *window_layer;
+Layer *particle_layer;
+#ifdef DEBUG
+TextLayer *text_header_layer;
+#endif
+
 tinymt32_t rndstate;
 int showing_time = 0;
 
@@ -75,13 +75,13 @@ float random_in_rangef(float min, float max) {
 }
 
 GPoint random_point_in_screen() {
-  return GPoint(random_in_range(0, window.layer.frame.size.w+1), 
-                random_in_range(0, window.layer.frame.size.h+1));
+  return GPoint(random_in_range(0, layer_get_frame(window_layer).size.w+1), 
+                random_in_range(0, layer_get_frame(window_layer).size.h+1));
 }
 
 GPoint random_point_roughly_in_screen(int margin, int padding) {
-  return GPoint(random_in_range(0-margin+padding, window.layer.frame.size.w+1+margin-padding), 
-                random_in_range(0-margin+padding, window.layer.frame.size.h+1+margin-padding));
+  return GPoint(random_in_range(0-margin+padding, layer_get_frame(window_layer).size.w+1+margin-padding), 
+                random_in_range(0-margin+padding, layer_get_frame(window_layer).size.h+1+margin-padding));
 }
 
 void update_particle(int i) {
@@ -135,12 +135,13 @@ void draw_particle(GContext* ctx, int i) {
 }
 
 void update_particles_layer(Layer *me, GContext* ctx) {
-  (void)me;
+#ifdef DEBUG
   // update debug text layer
-  // static char test_text[100];
-  // unsigned int foo = tinymt32_generate_uint32(&rndstate);
-  // xsprintf( test_text, "rand: %u", random_in_range(0,10));
-  // text_layer_set_text(&text_header_layer, test_text);
+  static char test_text[100];
+  unsigned int foo = tinymt32_generate_uint32(&rndstate);
+  snprintf(test_text, 100, "rand: %u", random_in_range(0,10));
+  text_layer_set_text(text_header_layer, test_text);
+#endif
 
   graphics_context_set_fill_color(ctx, GColorWhite);
   for(int i=0;i<NUM_PARTICLES;i++) {
@@ -165,27 +166,22 @@ void disperse_particles() {
   swarm_to_a_different_location();
 }
 
-void handle_timer(AppContextRef ctx, AppTimerHandle handle, uint32_t cookie) {
-  (void)ctx;
-  (void)handle;
-
-  if (cookie == COOKIE_ANIMATION_TIMER) {
-     layer_mark_dirty(&particle_layer);
-     timer_handle = app_timer_send_event(ctx, 50 /* milliseconds */, COOKIE_ANIMATION_TIMER);
-  } else if (cookie == COOKIE_SWARM_TIMER) {
+void handle_timer(uint32_t *cookie) {
+  if (*cookie == COOKIE_ANIMATION_TIMER) {
+     layer_mark_dirty(particle_layer);
+     timer_handle = app_timer_register(50 /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_animation_timer);
+  } else if (*cookie == COOKIE_SWARM_TIMER) {
     if(showing_time == 0) {
       swarm_to_a_different_location();
     }
-    app_timer_send_event(ctx, random_in_range(5000,15000) /* milliseconds */, COOKIE_SWARM_TIMER);
-  } else if (cookie == COOKIE_DISPERSE_TIMER) {
+    app_timer_register(random_in_range(5000,15000) /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_swarm_timer);
+  } else if (*cookie == COOKIE_DISPERSE_TIMER) {
     showing_time = 0;
     disperse_particles();
   }
 }
 
 void layer_update_callback(Layer *me, GContext* ctx) {
-  (void)me;
-  (void)ctx;
 }
 
 void swarm_to_digit(int digit, int start_idx, int end_idx, int offset_x, int offset_y) {
@@ -243,7 +239,7 @@ unsigned short get_display_hour(unsigned short hour) {
   return display_hour ? display_hour : 12; // Converts "0" to "12"
 }
 
-void display_time(PblTm *tick_time) {
+void display_time(struct tm *tick_time) {
   showing_time = 1;
   unsigned short hour = get_display_hour(tick_time->tm_hour);
   int min = tick_time->tm_min;
@@ -254,8 +250,8 @@ void display_time(PblTm *tick_time) {
   int hr_digit_ones = hour % 10; 
   int min_digit_tens = min / 10; 
   int min_digit_ones = min % 10; 
-  int w = window.layer.frame.size.w;
-  int h = window.layer.frame.size.h;
+  //  int w = layer_get_frame(window_layer).size.w;
+  //  int h = layer_get_frame(window_layer).size.h;
 
   // take out 5 particles
   // 2 for colon
@@ -299,24 +295,23 @@ void display_time(PblTm *tick_time) {
 }
 
 void kickoff_display_time() {
-  PblTm current_time;
-  get_time(&current_time);
-  display_time(&current_time);
+  time_t now=time(NULL);
+  struct tm *current_time = localtime(&now);
+
+  display_time(current_time);
   // TODO put the disperse timer here
 }
 
-void handle_tick(AppContextRef ctx, PebbleTickEvent *t) {
-  (void)t;
-  (void)ctx;
+void handle_tick(struct tm *tick_time, TimeUnits unit_changed) {
   kickoff_display_time();
-  app_timer_send_event(ctx, 12000 /* milliseconds */, COOKIE_DISPERSE_TIMER);
+  app_timer_register(12000 /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_disperse_timer);
 }
 
 void init_particles() {
   for(int i=0; i<NUM_PARTICLES; i++) {
 
     GPoint start = random_point_roughly_in_screen(10, 0);
-    GPoint goal = GPoint(window.layer.frame.size.w/2, window.layer.frame.size.h/2);
+    GPoint goal = GPoint(layer_get_frame(window_layer).size.w/2, layer_get_frame(window_layer).size.h/2);
 
     // GPoint start = goal;
     float initial_power = NORMAL_POWER;
@@ -328,72 +323,54 @@ void init_particles() {
   }
 }
 
-void back_single_click_handler(ClickRecognizerRef recognizer, Window *window) {
-  (void)recognizer;
-  (void)window;
-  kickoff_display_time();
-}
-
-
-void click_config_provider(ClickConfig **config, Window *window) {
-  (void)window;
-  config[BUTTON_ID_BACK]->click.handler = (ClickHandler) back_single_click_handler;
-}
-
-
-void handle_init(AppContextRef ctx) {
-  (void)ctx;
-
+void handle_init() {
   uint32_t seed = 4;
   tinymt32_init(&rndstate, seed);
 
-  window_init(&window, "Fireflies");
-  window_stack_push(&window, true /* Animated */);
-  window_set_background_color(&window, GColorBlack);
-  window_set_click_config_provider(&window, (ClickConfigProvider) click_config_provider);
-
-  // resource_init_current_app(&APP_RESOURCES);
-
-  // Init the layer for the minute display
-  // layer_init(&layer, window.layer.frame);
-  // layer.update_proc = &layer_update_callback;
-  // layer_add_child(&window.layer, &layer);
+  window=window_create();
+  window_layer=window_get_root_layer(window);
+  window_set_background_color(window, GColorBlack);
 
   init_particles();
 
+#ifdef DEBUG
   // setup debugging text layer
-  text_layer_init(&text_header_layer, window.layer.frame);
-  text_layer_set_text_color(&text_header_layer, GColorWhite);
-  text_layer_set_background_color(&text_header_layer, GColorClear);
-  layer_set_frame(&text_header_layer.layer, GRect(0, 0, 144-0, 168-0));
-  text_layer_set_font(&text_header_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
-  layer_add_child(&window.layer, &text_header_layer.layer);
- 
-  layer_init(&particle_layer, GRect(0,0, window.layer.frame.size.w, window.layer.frame.size.h));
-  particle_layer.update_proc = update_particles_layer;
-  layer_add_child(&window.layer, &particle_layer);
+  text_header_layer=text_layer_create(layer_get_frame(window_layer));
+  text_layer_set_text_color(text_header_layer, GColorWhite);
+  text_layer_set_background_color(text_header_layer, GColorClear);
+  layer_set_frame(text_layer_get_layer(text_header_layer), GRect(0, 0, 144-0, 168-0));
+  text_layer_set_font(text_header_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+  layer_add_child(window_layer, text_layer_get_layer(text_header_layer));
+#endif
 
-  timer_handle = app_timer_send_event(ctx, 50 /* milliseconds */, COOKIE_ANIMATION_TIMER);
-  app_timer_send_event(ctx, random_in_range(5000,15000) /* milliseconds */, COOKIE_SWARM_TIMER);
+  particle_layer=layer_create(GRect(0,0, layer_get_frame(window_layer).size.w, layer_get_frame(window_layer).size.h));
+  layer_set_update_proc(particle_layer, update_particles_layer);
+  layer_add_child(window_layer, particle_layer);
+
+  timer_handle = app_timer_register(50 /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_animation_timer);
+  app_timer_register(random_in_range(5000,15000) /* milliseconds */, (AppTimerCallback)handle_timer, &cookie_swarm_timer);
+
+  //
+  window_stack_push(window, true /* Animated */);
+
+  //
+  tick_timer_service_subscribe(MINUTE_UNIT, handle_tick);
 }
 
-void handle_deinit(AppContextRef ctx) {
-	(void)ctx;
+void handle_deinit() {
+  tick_timer_service_unsubscribe();
+
+#ifdef DEBUG
+  text_layer_destroy(text_header_layer);
+#endif
+
+  layer_destroy(particle_layer);
+
+  window_destroy(window);
 }
 
-void pbl_main(void *params) {
-  PebbleAppHandlers handlers = {
-    .init_handler = &handle_init,
-    .timer_handler = &handle_timer,
-
-    // Handle time updates
-    .tick_info = {
-      .tick_handler = &handle_tick,
-      .tick_units = MINUTE_UNIT
-    }
-
-  };
-  app_event_loop(params, &handlers);
+int main(void) {
+  handle_init();
+  app_event_loop();
+  handle_deinit();
 }
-
-

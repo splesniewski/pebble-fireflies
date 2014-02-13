@@ -7,32 +7,12 @@ _by Nate Murray_
 
 [![ScreenShot](http://i.imgur.com/ZHnMM4t.gif)](http://i.imgur.com/ZHnMM4t.gif)
 
-##[Download v1.0](https://dl.dropboxusercontent.com/u/1747214/keep/pebble/pebble-fireflies-1.0.pbw)
-
-
 Join me on a magical forest adventure where monochrome fireflies dance on your
 wrist. Normally, the fireflies swarm and blink and dance, but every minute or
 so, they join together and do their best to show you the time. They hold
 formation for only a moment, but the effort is to great for their little
 wings. In their excitement, they all glow together in unison and then quickly
 return to their natural state.
-
-## Build Instructions
-
-Clone this repository in an appropriate directory:
-
-	git clone https://github.com/jashmenn/pebble-fireflies.git
-
-Set up waf:
-
-	python ~/pebble-dev/pebble-sdk-release-001/tools/create_pebble_project.py --symlink-only ~/pebble-dev/pebble-sdk-release-001/sdk/ pebble-fireflies
-	cd pebble-fireflies
-
-Configure and build:
-
-  make compile
-
-Install `pebble-fireflies.pbw` in build directory. 
 
 ## License
 
